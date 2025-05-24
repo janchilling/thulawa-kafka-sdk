@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.kafkaAutoscaler.name }}
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.kafkaAutoscaler.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.kafkaAutoscaler.name }}
+    spec:
+      containers:
+        - name: kafka-autoscaler
+          image: {{ .Values.kafkaAutoscaler.image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PROMETHEUS_URL
+              value: "http://{{ .Values.prometheus.name }}.{{ .Values.namespace }}.svc.cluster.local:9090"
+            - name: DEPLOYMENT_NAME
+              value: {{ .Values.kafkaStreamsApp.name | quote }}
+            - name: NAMESPACE
+              value: {{ .Values.namespace | quote }}
+          resources:
+            {{- toYaml .Values.kafkaAutoscaler.resources | nindent 12 }}

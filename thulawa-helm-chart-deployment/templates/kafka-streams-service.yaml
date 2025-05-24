@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-streams-service
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: kafka-streams
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+    - name: jmx
+      protocol: TCP
+      port: 9998
+      targetPort: 9998

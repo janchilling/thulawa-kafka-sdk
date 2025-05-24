@@ -1,0 +1,30 @@
+1. Get the application URL by running the appropriate command based on the service type:
+
+{{- if and .Values.ingress .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}{{ .path }}
+  {{- end }}
+{{- end }}
+
+{{- else if eq .Values.service.type "NodePort" }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" service {{ include "thulawa-helm-chart-deployment.fullname" . }})
+  export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[?(@.type=='InternalIP')].address}")
+  echo "Application is available at: http://$NODE_IP:$NODE_PORT"
+
+{{- else if eq .Values.service.type "LoadBalancer" }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch its status by running:
+          kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "thulawa-helm-chart-deployment.fullname" . }}
+
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "thulawa-helm-chart-deployment.fullname" . }} -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+  echo "Application is available at: http://$SERVICE_IP:{{ .Values.service.port }}"
+
+{{- else if eq .Values.service.type "ClusterIP" }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "thulawa-helm-chart-deployment.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit your application by running:"
+  echo "  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT"
+  echo "Then open http://127.0.0.1:8080 in your browser."
+
+{{- end }}

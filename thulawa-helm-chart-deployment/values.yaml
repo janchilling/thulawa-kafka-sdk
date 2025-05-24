@@ -1,0 +1,47 @@
+namespace: streamspace
+
+kafkaStreamsApp:
+  name: kafka-streams-app
+  image: 
+  replicas: 
+  resources:
+    requests:
+      cpu: 
+      memory: 
+    limits:
+      cpu: 
+      memory: 
+
+kafkaAutoscaler:
+  name: kafka-autoscaler
+  image: 
+  resources:
+    requests:
+      cpu: 
+      memory: 
+    limits:
+      cpu: 
+      memory: 
+
+prometheus:
+  name: prometheus
+  image: 
+  resources:
+    requests:
+      cpu: 
+      memory: 
+    limits:
+      cpu: 
+      memory: 
+
+hpa:
+  minReplicas: 
+  maxReplicas: 
+  cpuUtilization: 
+
+ingress:
+  enabled: 
+
+service:
+  type: 
+  port: 
