@@ -1,0 +1,128 @@
+name: CI/CD Pipeline for Thulawa Streamspace App
+
+on:
+  push:
+    branches: ["*"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: docker.io
+  IMAGE_KAFKA_STREAMS: manulagunatilleke/streamspace-app
+  IMAGE_AUTOSCALER: manulagunatilleke/kafka-autoscaler
+  CHART_PATH: thulawa-helm-chart-deployment
+  CONFIG_PATH: config
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build and Push Kafka Streams App Image (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: thulawa-core-library/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_KAFKA_STREAMS }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_KAFKA_STREAMS }}:latest
+          platforms: linux/amd64,linux/arm64
+
+      - name: Build and Push Kafka Autoscaler Image (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: thulawa-autoscaler
+          file: thulawa-autoscaler/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_AUTOSCALER }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_AUTOSCALER }}:latest
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.13.2
+
+      - name: Set up Kubeconfig
+        run: |
+          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 --decode > kubeconfig
+          chmod 600 kubeconfig
+          echo "KUBECONFIG=$(pwd)/kubeconfig" >> $GITHUB_ENV
+
+      - name: Generate Helm values from GitHub Secrets
+        run: |
+          cd ${{ env.CONFIG_PATH }}
+          cat <<EOF > values.generated.yaml
+          namespace: ${{ secrets.NAMESPACE }}
+
+          kafkaStreamsApp:
+            name: kafka-streams-app
+            image: ${{ env.IMAGE_KAFKA_STREAMS }}:${{ env.IMAGE_TAG }}
+            replicas: ${{ secrets.KAFKA_STREAMS_REPLICAS }}
+            resources:
+              requests:
+                cpu: "${{ secrets.KAFKA_STREAMS_CPU_REQUEST }}"
+                memory: "${{ secrets.KAFKA_STREAMS_MEMORY_REQUEST }}"
+              limits:
+                cpu: "${{ secrets.KAFKA_STREAMS_CPU_LIMIT }}"
+                memory: "${{ secrets.KAFKA_STREAMS_MEMORY_LIMIT }}"
+
+          kafkaAutoscaler:
+            name: kafka-autoscaler
+            image: ${{ env.IMAGE_AUTOSCALER }}:${{ env.IMAGE_TAG }}
+            resources:
+              requests:
+                cpu: "${{ secrets.KAFKA_AUTOSCALER_CPU_REQUEST }}"
+                memory: "${{ secrets.KAFKA_AUTOSCALER_MEMORY_REQUEST }}"
+              limits:
+                cpu: "${{ secrets.KAFKA_AUTOSCALER_CPU_LIMIT }}"
+                memory: "${{ secrets.KAFKA_AUTOSCALER_MEMORY_LIMIT }}"
+
+          prometheus:
+            name: prometheus
+            image: ${{ secrets.PROMETHEUS_IMAGE }}
+            resources:
+              requests:
+                cpu: "${{ secrets.PROMETHEUS_CPU_REQUEST }}"
+                memory: "${{ secrets.PROMETHEUS_MEMORY_REQUEST }}"
+              limits:
+                cpu: "${{ secrets.PROMETHEUS_CPU_LIMIT }}"
+                memory: "${{ secrets.PROMETHEUS_MEMORY_LIMIT }}"
+
+          hpa:
+            minReplicas: ${{ secrets.HPA_MIN_REPLICAS }}
+            maxReplicas: ${{ secrets.HPA_MAX_REPLICAS }}
+            cpuUtilization: ${{ secrets.HPA_CPU_UTILIZATION }}
+
+          ingress:
+            enabled: ${{ secrets.INGRESS_ENABLED }}
+
+          service:
+            type: ${{ secrets.SERVICE_TYPE }}
+            port: ${{ secrets.SERVICE_PORT }}
+          EOF
+
+      - name: Deploy to Kubernetes via Helm
+        run: |
+          helm upgrade --install k8s-stream ${{ env.CHART_PATH }} \
+            --namespace ${{ secrets.NAMESPACE }} \
+            --create-namespace \
+            -f ${{ env.CONFIG_PATH }}/values.generated.yaml
+
+      - name: Deployment Complete
+        run: echo "Helm chart deployed using tag ${{ env.IMAGE_TAG }}"
+        
